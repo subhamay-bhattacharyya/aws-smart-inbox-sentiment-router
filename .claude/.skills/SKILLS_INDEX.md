@@ -7,7 +7,7 @@ metadata:
 
 # Skills Index
 
-Reference guide for the skills available in the cloudformation-template repository.
+Reference guide for the skills available in the aws-smart-inbox-sentiment-router repository.
 
 ## Available Skills
 
