@@ -27,30 +27,34 @@ An automated receipt processing pipeline that ingests receipt images/PDFs, extra
 
 ``` mermaid
 flowchart LR
-    User["👤 User"] -->|Uploads receipt| S3
+    User["👤 User"] -->|"1. Uploads message<br/>(e.g., complaint, feedback)"| S3
 
     subgraph AWS["AWS Cloud"]
-        S3["📦 Amazon S3"]
+        S3["📦 Amazon S3<br/>Inbox bucket"]
         Lambda["⚙️ AWS Lambda"]
-        Textract["🔍 Amazon Textract"]
-        DynamoDB["💾 Amazon DynamoDB"]
-        SES["📧 Amazon SES"]
+        Comprehend["🧠 Amazon Comprehend"]
+        SQS["📨 Amazon SQS<br/>Routed queues"]
+        CloudWatch["📊 Amazon CloudWatch"]
+        CloudFront["🌐 Amazon CloudFront"]
 
-        S3 -->|"2. Trigger"| Lambda
-        Lambda -->|"3. Process"| Textract
-        Textract -->|"4. Data"| Lambda
-        Lambda -->|"5. Store"| DynamoDB
-        Lambda -->|"6. Notify"| SES
+        S3 -->|"2. S3 event triggers"| Lambda
+        Lambda -->|"3. Analyze text"| Comprehend
+        Comprehend -->|"4. Sentiment: Positive, Negative, or Neutral"| SQS
+        Lambda -->|"5. Route message"| SQS
+        SQS --> CloudFront
+        Lambda -.->|"6. Logs & metrics"| CloudWatch
+        SQS -.->|"6. Queue metrics"| CloudWatch
     end
 
-    SES -->|Email notification| User
+    CloudFront -->|Serves frontend| User
 
     style User fill:#e1f5ff
     style S3 fill:#fff3e0
     style Lambda fill:#f3e5f5
-    style Textract fill:#f3e5f5
-    style DynamoDB fill:#e8f5e9
-    style SES fill:#fce4ec
+    style Comprehend fill:#f3e5f5
+    style SQS fill:#fce4ec
+    style CloudWatch fill:#fce4ec
+    style CloudFront fill:#e8f5e9
 ```
 
 ### Steps

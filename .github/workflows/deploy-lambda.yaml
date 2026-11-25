@@ -1,5 +1,5 @@
 name: Build and Deploy Lambda
-run-name: Deploy Lambda by ${{ github.actor }}
+run-name: Build and Deploy Lambda run by ${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -45,7 +45,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   deploy:
-    name: Build and deploy test-lambda
+    name: Build and deploy lambda function
     needs: config
     uses: subhamay-bhattacharyya-gha/lambda-build-deploy-reusable-wf/.github/workflows/build-deploy-lambda.yaml@main
     with:
