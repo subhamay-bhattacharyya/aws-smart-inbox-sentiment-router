@@ -1,4 +1,4 @@
-# Build a Serverless Smart Inbox with Real-Time Sentiment Analysis
+# Serverless Smart Inbox with Real-Time Sentiment Analysis
 
 <!-- Row 1: Status - Most Important -->
 [![Release](https://img.shields.io/github/v/release/subhamay-bhattacharyya/aws-smart-inbox-sentiment-router?label=Release)](https://github.com/subhamay-bhattacharyya/aws-smart-inbox-sentiment-router/releases)&nbsp;[![Release Workflow](https://github.com/subhamay-bhattacharyya/aws-smart-inbox-sentiment-router/actions/workflows/release.yaml/badge.svg)](https://github.com/subhamay-bhattacharyya/aws-smart-inbox-sentiment-router/actions/workflows/release.yaml)&nbsp;[![Issues](https://img.shields.io/github/issues/subhamay-bhattacharyya/aws-smart-inbox-sentiment-router)](https://github.com/subhamay-bhattacharyya/aws-smart-inbox-sentiment-router/issues)&nbsp;[![Last Commit](https://img.shields.io/github/last-commit/subhamay-bhattacharyya/aws-smart-inbox-sentiment-router)](https://github.com/subhamay-bhattacharyya/aws-smart-inbox-sentiment-router/commits)
@@ -17,233 +17,154 @@
 
 ---
 
-This repository contains nested CloudFormation templates for deploying S3 buckets with security best practices and optional policy enforcement.
-
 ## Overview
 
-This is a **nested stack template** designed to be invoked from a parent/root CloudFormation stack. Templates are stored in this repository and should be uploaded to an S3 bucket for reference by parent stacks.
+An automated receipt processing pipeline that ingests receipt images/PDFs, extracts structured data using ML, and stores results with email notifications. Built entirely with Infrastructure-as-Code using CloudFormation nested stacks for modularity and reusability across environments.
 
-## Template Files
+---
 
-### CloudFormation Templates
+## Architecture
 
-- **`templates/s3-bucket.yaml`** — Nested template for S3 bucket creation (versioning, public access blocking)
-- **`templates/s3-bucket-policy.yaml`** — Optional nested template for S3 bucket policy (encryption enforcement, secure transport)
+``` mermaid
+flowchart LR
+    User["👤 User"] -->|Uploads receipt| S3
 
-### Parameter Files
+    subgraph AWS["AWS Cloud"]
+        S3["📦 Amazon S3"]
+        Lambda["⚙️ AWS Lambda"]
+        Textract["🔍 Amazon Textract"]
+        DynamoDB["💾 Amazon DynamoDB"]
+        SES["📧 Amazon SES"]
 
-- **`parameters/parameters.json`** — Parameter values for development environment
+        S3 -->|"2. Trigger"| Lambda
+        Lambda -->|"3. Process"| Textract
+        Textract -->|"4. Data"| Lambda
+        Lambda -->|"5. Store"| DynamoDB
+        Lambda -->|"6. Notify"| SES
+    end
 
-## Template Features
+    SES -->|Email notification| User
 
-### S3 Bucket Template (s3-bucket.yaml)
-
-- ✅ Versioning enabled by default
-- ✅ Public Access Blocking
-- ✅ Smart bucket naming (project prefix, account ID, environment, region)
-- ✅ Optional CI suffix support
-
-### S3 Bucket Policy Template (s3-bucket-policy.yaml)
-
-- ✅ Encryption enforcement on uploads
-- ✅ Secure transport enforcement (HTTPS only)
-- ✅ Optional/conditional policy rules
-
-## Parameters
-
-### S3 Bucket Parameters
-
-| Parameter | Type | Default | Description |
-| ----------- | ------ | --------- | ------------- |
-| `ProjectName` | String | — | Project name to use as bucket prefix (required) |
-| `BucketBaseName` | String | `cfn-bucket` | Base name for S3 bucket |
-| `environment` | String | `devl` | Deployment environment (devl, stag, prod) |
-| `CiSuffix` | String | `""` | Optional CI suffix to append to bucket name |
-
-### S3 Bucket Policy Parameters
-
-**Generic (Standalone) Mode:**
-
-| Parameter | Type | Description |
-| ----------- | ------ | ------------- |
-| `BucketName` | String | Direct bucket name (use for any bucket) |
-
-**Integrated Mode (with bucket template):**
-
-| Parameter | Type | Default | Description |
-| ----------- | ------ | --------- | ------------- |
-| `ProjectName` | String | — | Project name (must match bucket template) |
-| `BucketBaseName` | String | `cfn-bucket` | Base name (must match bucket template) |
-| `environment` | String | `devl` | Environment (must match bucket template) |
-| `CiSuffix` | String | `""` | CI suffix (must match bucket template) |
-
-**Usage:** If `BucketName` is provided (non-empty), it takes precedence. Otherwise, the bucket name is constructed from ProjectName/BucketBaseName/environment/CiSuffix.
-
-## Outputs
-
-### S3 Bucket Template Outputs
-
-- `S3BucketName` — S3 bucket name
-- `S3BucketArn` — S3 bucket ARN
-
-### S3 Bucket Policy Template Outputs
-
-- `BucketName` — Bucket name with policy applied
-- `PolicyStatus` — Policy application status (Applied)
-
-## Usage
-
-### 1. Upload Templates to S3
-
-```bash
-aws s3 cp templates/s3-bucket.yaml s3://your-cfn-bucket/templates/s3-bucket.yaml
-aws s3 cp templates/s3-bucket-policy.yaml s3://your-cfn-bucket/templates/s3-bucket-policy.yaml
+    style User fill:#e1f5ff
+    style S3 fill:#fff3e0
+    style Lambda fill:#f3e5f5
+    style Textract fill:#f3e5f5
+    style DynamoDB fill:#e8f5e9
+    style SES fill:#fce4ec
 ```
 
-### 2. Reference from Parent Stack
+### Steps
 
-In your parent/root CloudFormation template:
+1. The user uploads a receipt to S3.
+2. The S3 upload triggers the Lambda function.
+3. Lambda invokes Amazon Textract to extract data from the receipt.
+4. Textract returns structured data to Lambda.
+5. Lambda stores the processed data in the DynamoDB table.
+6. Lambda uses Amazon SES to send an email notification to the user.
 
-```yaml
-S3BucketNestedStack:
-  Type: AWS::CloudFormation::Stack
-  Properties:
-    TemplateURL: https://s3.amazonaws.com/your-cfn-bucket/templates/s3-bucket.yaml
-    Parameters:
-      ProjectName: !Ref ProjectName
-      BucketBaseName: cfn-bucket
-      environment: !Ref Environment
-      CiSuffix: !Ref CiSuffix
-    Tags:
-      - Key: Environment
-        Value: !Ref Environment
+---
 
-S3PolicyNestedStack:
-  Type: AWS::CloudFormation::Stack
-  DependsOn: S3BucketNestedStack
-  Properties:
-    TemplateURL: https://s3.amazonaws.com/your-cfn-bucket/templates/s3-bucket-policy.yaml
-    Parameters:
-      BucketName: !GetAtt S3BucketNestedStack.Outputs.S3BucketName
-      ProjectName: ""
-      BucketBaseName: cfn-bucket
-      environment: !Ref Environment
-      CiSuffix: !Ref CiSuffix
-    Tags:
-      - Key: Environment
-        Value: !Ref Environment
+## Features & Status
 
-Outputs:
-  BucketName:
-    Value: !GetAtt S3BucketNestedStack.Outputs.S3BucketName
-  BucketArn:
-    Value: !GetAtt S3BucketNestedStack.Outputs.S3BucketArn
+| Component | Purpose | Status |
+| --- | --- | --- |
+| **S3 Bucket** | Stores receipt images/PDFs with versioning & encryption | ✅ Complete |
+| **DynamoDB Table** | Stores extracted receipt metadata | ✅ Complete |
+| **Lambda Function** | Orchestrates receipt processing workflow | ✅ Complete |
+| **Textract Integration** | Extracts text/data from receipts | ✅ Complete |
+| **SES Notifications** | Sends email with extracted details | ✅ Complete |
+| **IAM Roles & Policies** | Cross-service permissions | ✅ Complete |
+
+---
+
+## Project Structure
+
+``` text
+.
+├── .claude/
+│   └── .skills/                     # Custom skills (contribution, github-ci-workflow, package-json, readme-md)
+├── .devcontainer/
+│   └── devcontainer.json            # Dev container setup
+├── .env/
+│   └── environments.yaml            # Environment configuration
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yaml                  # Template validation & deployment
+│   │   ├── claude.yaml              # Claude Code integration
+│   │   ├── claude-code-review.yaml  # Claude Code review
+│   │   ├── create-branch.yaml       # Issue-based branch automation
+│   │   ├── deploy.yaml              # CloudFormation stack deployment
+│   │   ├── deploy-lambda.yaml       # Lambda build and deployment
+│   │   ├── delete.yaml              # CloudFormation stack deletion
+│   │   ├── notify.yaml              # Slack notifications
+│   │   └── setup-environments.yaml  # AWS environment setup
+│   ├── ISSUE_TEMPLATE/              # Bug report and feature request templates
+│   ├── CODEOWNERS                   # Repository ownership
+│   ├── dependabot.yaml              # Dependency updates
+│   └── PULL_REQUEST_TEMPLATE.md     # PR template
+├── cloudformation/
+│   ├── template.yaml                # Root CloudFormation stack
+│   ├── parameters.json              # Stack parameters
+│   └── stack-config.json            # Stack configuration
+├── lambda/
+│   └── receipt-processor/
+│       ├── lambda.py                # Lambda handler
+│       ├── requirements.txt         # Python dependencies
+│       └── structured_logging/      # Structured logging package
+├── scripts/
+│   └── plugins/                     # Semantic-release plugins
+├── .gitattributes                   # Git attribute settings
+├── .gitignore                       # Git ignore rules
+├── CLAUDE.md                        # Project guidelines
+├── CONTRIBUTING.md                  # Contribution guidelines
+├── CHANGELOG.md                     # Version history
+├── PROGRESS.md                      # Implementation tracking
+├── CODE_OF_CONDUCT.md               # Code of conduct
+├── LICENSE                          # MIT License
+└── README.md                        # This file
 ```
 
-### 3. Deploy Using AWS CLI
+---
 
-#### Option A: Deploy Bucket Only
+## Key Features
 
-```bash
-# Development (without CI prefix)
-aws cloudformation create-stack \
-  --stack-name cfn-s3-bucket-dev \
-  --template-body file://templates/s3-bucket.yaml \
-  --parameters file://parameters/dev.json
+### Infrastructure as Code
 
-# Staging (without CI prefix)
-aws cloudformation create-stack \
-  --stack-name cfn-s3-bucket-stag \
-  --template-body file://templates/s3-bucket.yaml \
-  --parameters file://parameters/staging.json
+- Nested CloudFormation stack pattern for modularity
+- Parameter-driven multi-environment configuration
+- Deterministic resource naming (ProjectName-Environment-AccountId-Region)
 
-# Production (without CI prefix)
-aws cloudformation create-stack \
-  --stack-name cfn-s3-bucket-prod \
-  --template-body file://templates/s3-bucket.yaml \
-  --parameters file://parameters/prod.json
-```
+### Security Best Practices
 
-#### Option B: Deploy Bucket + Policy (Recommended)
+- S3 versioning and public access blocking
+- KMS encryption for S3 and DynamoDB
+- DynamoDB point-in-time recovery
+- IAM least-privilege access patterns
 
-```bash
-# Deploy bucket first
-aws cloudformation create-stack \
-  --stack-name cfn-s3-bucket-dev \
-  --template-body file://templates/s3-bucket.yaml \
-  --parameters file://parameters/dev.json
+### CI/CD & Automation
 
-# Wait for bucket to be created
-aws cloudformation wait stack-create-complete --stack-name cfn-s3-bucket-dev
+- GitHub Actions validation and deployment
+- AWS OIDC keyless authentication
+- Semantic versioning with conventional commits
+- Automated CloudFormation template validation
 
-# Get the bucket name from stack outputs
-BUCKET_NAME=$(aws cloudformation describe-stacks \
-  --stack-name cfn-s3-bucket-dev \
-  --query 'Stacks[0].Outputs[?OutputKey==`S3BucketName`].OutputValue' \
-  --output text)
+---
 
-#### Using Integrated Mode (with bucket template parameters)
+## Next Steps
 
-```bash
-aws cloudformation create-stack \
-  --stack-name cfn-s3-policy-dev \
-  --template-body file://templates/s3-bucket-policy.yaml \
-  --parameters file://parameters/policy-dev.json
-```
+1. Create Lambda function CloudFormation template
+2. Integrate Amazon Textract for OCR
+3. Configure SES for email notifications
+4. Define IAM roles and cross-service policies
+5. Set up DynamoDB Streams to Lambda integration
 
-#### Using Generic Mode (standalone with direct bucket name)
+---
 
-```bash
-aws cloudformation create-stack \
-  --stack-name cfn-s3-policy-dev \
-  --template-body file://templates/s3-bucket-policy.yaml \
-  --parameters \
-    ParameterKey=BucketName,ParameterValue=my-existing-bucket \
-    ParameterKey=ProjectName,ParameterValue=""
-```
+## Contributing
 
-#### Option C: Deploy with CI Suffix
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-```bash
-# Development with CI suffix (e.g., for GitLab CI)
-aws cloudformation create-stack \
-  --stack-name cfn-s3-bucket-dev-ci \
-  --template-body file://templates/s3-bucket.yaml \
-  --parameters \
-    ParameterKey=ProjectName,ParameterValue=myproject \
-    ParameterKey=BucketBaseName,ParameterValue=cfn-bucket \
-    ParameterKey=environment,ParameterValue=devl \
-    ParameterKey=CiSuffix,ParameterValue=$CI_PIPELINE_ID
-```
-
-## Bucket Naming Convention
-
-The templates generate bucket names using the following pattern:
-
-**Without CI Suffix:**
-
-```bash
-{ProjectName}-{BucketBaseName}-{AccountId}-{Environment}-{Region}
-```
-
-Example: `myproject-cfn-bucket-123456789012-devl-us-east-1`
-
-**With CI Suffix:**
-
-```bash
-{ProjectName}-{BucketBaseName}-{AccountId}-{Environment}-{Region}-{CiSuffix}
-```
-
-Example: `myproject-cfn-bucket-123456789012-devl-us-east-1-pipeline-12345`
-
-## Best Practices Implemented
-
-- ✅ Versioning enabled by default
-- ✅ Public access blocked by default
-- ✅ Smart bucket naming with project prefix, account ID, environment, and region
-- ✅ Optional CI suffix support for unique deployments
-- ✅ Optional policy enforcement (encryption and secure transport)
-- ✅ Export values for cross-stack references
+---
 
 ## License
 
